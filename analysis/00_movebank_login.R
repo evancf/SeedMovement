@@ -7,5 +7,5 @@ ipak("tidyverse")
 # Movebank ---------------------
 ipak("move")
 
-curl_login <- movebankLogin(username = "evanfricke",
-                            password = "Hello_567vbv")
+curl_login <- movebankLogin(username = "username",
+                            password = "password")

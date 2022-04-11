@@ -114,6 +114,11 @@ dat$time_diff_min <- apply(dat[,c("timestamp", "frug_event_timestamp")],
                                       units = "mins")
                            })
 
+
+pdf("./outputs/Loxodonta africana example.pdf", 
+    width = 5,
+    height = 8)
+
 # Plot this
 par(mfrow = c(3,1))
 op <- par()
@@ -121,7 +126,7 @@ par(mar = c(2.1, 4.1, 2.1, 2.1))
 plot(NA, 
      xlab = "",
      ylab = "Displacement (km)",
-     xlim = c(0, (max_days * 24 * 60 + 1000) / (60 * 24)),
+     xlim = c(0, (max_days * 24 * 60) / (60 * 24)),
      ylim = c(1, 100000/1000),
      #log = "y",
      las = 1,
@@ -143,7 +148,7 @@ par(mar = c(5.1, 4.1, 0.1, 2.1))
 plot(NA, 
      xlab = "Time since frugivory event (days)",
      ylab = "Displacement (km)",
-     xlim = c(0, (max_days * 24 * 60 + 1000) / (60 * 24)),
+     xlim = c(0, (max_days * 24 * 60) / (60 * 24)),
      ylim = c(0.01, 100000/1000),
      log = "y",
      las = 1,
@@ -170,5 +175,6 @@ for(i in frug_events){
                                                              xlab = "Gut passage time (days)",
                                                              las = 1)
 
+dev.off()
 
 
