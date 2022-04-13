@@ -263,11 +263,18 @@ for(file in movebank_files){
 # Plot some examples -----------------------------------------------------------
 
 pdf("./outputs/Loxodonta africana example.pdf", 
-    width = 5,
-    height = 8)
+    width = 6.5,
+    height = 6.5)
+
+layout(mat = matrix(c(1,3,
+                      1,3,
+                      1,4,
+                      2,4,
+                      2,5,
+                      2,5), nrow = 6, byrow = T))
 
 # Plot this
-par(mfrow = c(3,1))
+#par(mfrow = c(3,1))
 op <- par()
 par(mar = c(2.1, 4.1, 2.1, 2.1))
 plot(NA, 
@@ -287,15 +294,15 @@ for(i in frug_events){
   lines(dd$time_diff_min / (60 * 24),
         dd$displacement/1000,
         col = rgb(0,0,0, 0.3))
-  print(i)
-  Sys.sleep(2)#stop()#
+  # print(i)
+  # Sys.sleep(2)#stop()#
 }
 
 
 
 par(mar = c(5.1, 4.1, 0.1, 2.1))
 plot(NA, 
-     xlab = "Time since frugivory event (days)",
+     xlab = "Time since hypothetical frugivory event (days)",
      ylab = "Displacement (km)",
      xlim = c(0, (max_days * 24 * 60) / (60 * 24)),
      ylim = c(0.01, 100000/1000),
@@ -310,6 +317,8 @@ axis(2, at = c(0.01,0.1, 1, 10, 100),
 for(i in frug_events){
   dd <- dat %>% filter(frug_event_id == i)
   
+  dd$displacement[which(dd$displacement == 0)] <- 0.1
+  
   lines(dd$time_diff_min / (60 * 24),
         dd$displacement/1000,
         col = rgb(0,0,0, 0.3))
@@ -318,12 +327,36 @@ for(i in frug_events){
 # Here's what the gut passage time distribution looks like for
 # Loxodonta africana
 
-(rlnorm(10000, meanlog = log(40), sdlog = 0.2) / 24) %>% hist(main = "",
-                                                              freq = F,
-                                                             breaks = seq(0, 5, by = 0.25),
-                                                             xlab = "Gut passage time (days)",
-                                                             las = 1)
+par(mar = c(5.1, 4.1, 2.1, 2.1))
+gpts <- (rlnorm(10000, meanlog = log(40), sdlog = 0.2) / 24) 
+gpts %>% hist(main = "",
+              freq = F,
+              breaks = seq(0, 5, by = 0.25),
+              xlab = "Gut passage time (days)",
+              las = 1)
+
+# est_disp <- rep(NA, length(gpts))
+# ids <- unique(dat$individual.local.identifier)
+# for(i in 1:length(gpts)){
+#   dd <- dat %>% filter(individual.local.identifier == sample(ids, 1)) %>% 
+#     mutate(timeX = abs(time_diff_min - (gpts[i] * 60 * 24)))
+#   est_disp[i] <- dd$displacement[which.min(dd$timeX)]
+# }
+
+(est_disp/1000) %>% hist(main = "",
+                  freq = F,
+                  breaks = 21,
+                  xlab = "Dispersal distance (km)")
+
+(est_disp/1000) %>% log10() %>% hist(main = "",
+                  freq = F,
+                  breaks = 21,
+                  xlab = "Dispersal distance (km) log10 scale")
+
+
+
 
 dev.off()
+
 
 
