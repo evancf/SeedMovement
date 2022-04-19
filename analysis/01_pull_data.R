@@ -20,6 +20,7 @@ ipak(c("tidyverse",
 
 movebank_files <- list.files("./data/Movebank raw", full.names = T)
 
+move_list <- list()
 
 for(file in movebank_files){
   
@@ -40,8 +41,8 @@ for(file in movebank_files){
                     "individual.local.identifier")]),]
   
   # Change column formats ---------------------------------------
-  head(dat)
-  str(dat)
+  #head(dat)
+  #str(dat)
   
   # Time
   dat$timestamp <- as.POSIXct(dat$timestamp, tz = "UTC")
@@ -197,166 +198,218 @@ for(file in movebank_files){
                                         units = "mins")
                              })
   
-  # Will keep only data associated with the frugivory events and monitoring 
+  # Will keep only data associated with the frugivory events and monitoring
   # period
   dat <- dat %>% filter(!is.na(displacement))
+
+  # # Plot the individuals from this study
+  # par(mfrow = c(2,1))
+  # op <- par()
+  # par(mar = c(2.1, 4.1, 2.1, 2.1))
+  # plot(NA,
+  #      xlab = "",
+  #      ylab = "Displacement (m)",
+  #      xlim = c(0, (max_days * 24 * 60)),
+  #      ylim = c(1, max(dat$displacement, na.rm = T)),
+  #      las = 1,
+  #      frame = F,
+  #      main = dat$individual.taxon.canonical.name[1]
+  # )
+  # for(i in frug_events){
+  #   dd <- dat %>% filter(frug_event_id == i)
+  # 
+  #   lines(dd$time_diff_min,
+  #         dd$displacement,
+  #         col = rgb(0,0,0, 0.3))
+  # }
+  # 
+  # 
+  # 
+  # par(mar = c(5.1, 4.1, 0.1, 2.1))
+  # plot(NA,
+  #      xlab = "Time since frugivory event (minutes)",
+  #      ylab = "Displacement (m)",
+  #      xlim = c(0, (max_days * 24 * 60)),
+  #      ylim = c(0.1, max(dat$displacement, na.rm = T)),
+  #      log = "y",
+  #      las = 1,
+  #      frame = F
+  # )
+  # for(i in frug_events){
+  #   dd <- dat %>% filter(frug_event_id == i)
+  # 
+  #   # So these can be plotted nicely on the log scale
+  #   dd$displacement[which(dd$displacement == 0)] <- 0.1
+  # 
+  #   lines(dd$time_diff_min,
+  #         dd$displacement,
+  #         col = rgb(0,0,0, 0.3))
+  # }
   
-  # Plot the individuals from this study
-  par(mfrow = c(2,1))
-  op <- par()
-  par(mar = c(2.1, 4.1, 2.1, 2.1))
-  plot(NA, 
-       xlab = "",
-       ylab = "Displacement (m)",
-       xlim = c(0, (max_days * 24 * 60)),
-       ylim = c(1, max(dat$displacement, na.rm = T)),
-       las = 1,
-       frame = F,
-       main = dat$individual.taxon.canonical.name[1]
-  )
-  for(i in frug_events){
-    dd <- dat %>% filter(frug_event_id == i)
-    
-    lines(dd$time_diff_min,
-          dd$displacement,
-          col = rgb(0,0,0, 0.3))
+  # Do a little data cleaning (more issues will certainly come up)
+  if(grepl("Milvus migrans", file)){
+    dat$individual.local.identifier <- "Milvus migrans"
   }
-  
-  
-  
-  par(mar = c(5.1, 4.1, 0.1, 2.1))
-  plot(NA, 
-       xlab = "Time since frugivory event (minutes)",
-       ylab = "Displacement (m)",
-       xlim = c(0, (max_days * 24 * 60)),
-       ylim = c(0.1, max(dat$displacement, na.rm = T)),
-       log = "y",
-       las = 1,
-       frame = F
-  )
-  for(i in frug_events){
-    dd <- dat %>% filter(frug_event_id == i)
-    
-    # So these can be plotted nicely on the log scale
-    dd$displacement[which(dd$displacement == 0)] <- 0.1
-    
-    lines(dd$time_diff_min,
-          dd$displacement,
-          col = rgb(0,0,0, 0.3))
-  }
-  
   
   # Save the displacement data to csv? Probably want to reduce the number
   # of columns
   
-
+  move_list[[file]] <- dat
   
+  print(file)
 }
 
 
+# Decide which columns to keep
+
+cols_to_keep <- c("timestamp",
+                  "localtime",
+                  "location.long",
+                  "location.lat",
+                  "frug_event_id",
+                  "individual.taxon.canonical.name",
+                  "individual.local.identifier",
+                  "time_diff_min",
+                  "displacement",
+                  "study.name")
+
+# Now make a dataframe
+move_list2 <- lapply(move_list, function(x){
+  x <- x %>% dplyr::select(cols_to_keep)
+})
+
+move_df <- do.call(rbind, move_list2)
+
+# Here are some issues that should be dealt with in the above for loop
+# move_df[which(is.na(move_df$individual.taxon.canonical.name)), 
+#         "individual.taxon.canonical.name"] <- "Milvus migrans"
 
 
+write.csv(move_df, file = "./data/tidy/move_df.csv")
 
 
-
-
-# Plot some examples -----------------------------------------------------------
-
-pdf("./outputs/Loxodonta africana example.pdf", 
-    width = 6.5,
-    height = 6.5)
-
-layout(mat = matrix(c(1,3,
-                      1,3,
-                      1,4,
-                      2,4,
-                      2,5,
-                      2,5), nrow = 6, byrow = T))
-
-# Plot this
-#par(mfrow = c(3,1))
-op <- par()
-par(mar = c(2.1, 4.1, 2.1, 2.1))
-plot(NA, 
-     xlab = "",
-     ylab = "Displacement (km)",
-     xlim = c(0, (max_days * 24 * 60) / (60 * 24)),
-     ylim = c(1, 100000/1000),
-     #log = "y",
-     las = 1,
-     frame = F,
-     xaxt = "n",
-     )
-axis(1, at = seq(0,5), labels = rep("", 6))
-for(i in frug_events){
-  dd <- dat %>% filter(frug_event_id == i)
-  
-  lines(dd$time_diff_min / (60 * 24),
-        dd$displacement/1000,
-        col = rgb(0,0,0, 0.3))
-  # print(i)
-  # Sys.sleep(2)#stop()#
-}
-
-
-
-par(mar = c(5.1, 4.1, 0.1, 2.1))
-plot(NA, 
-     xlab = "Time since hypothetical frugivory event (days)",
-     ylab = "Displacement (km)",
-     xlim = c(0, (max_days * 24 * 60) / (60 * 24)),
-     ylim = c(0.01, 100000/1000),
-     log = "y",
-     las = 1,
-     frame = F,
-     yaxt = "n"
-)
-axis(2, at = c(0.01,0.1, 1, 10, 100), 
-     labels = c(0.01,0.1, 1, 10, 100), 
-     las = 1)
-for(i in frug_events){
-  dd <- dat %>% filter(frug_event_id == i)
-  
-  dd$displacement[which(dd$displacement == 0)] <- 0.1
-  
-  lines(dd$time_diff_min / (60 * 24),
-        dd$displacement/1000,
-        col = rgb(0,0,0, 0.3))
-}
-
-# Here's what the gut passage time distribution looks like for
-# Loxodonta africana
-
-par(mar = c(5.1, 4.1, 2.1, 2.1))
-gpts <- (rlnorm(10000, meanlog = log(40), sdlog = 0.2) / 24) 
-gpts %>% hist(main = "",
-              freq = F,
-              breaks = seq(0, 5, by = 0.25),
-              xlab = "Gut passage time (days)",
-              las = 1)
-
+# # Plot some examples -----------------------------------------------------------
+# 
+# pdf("./outputs/Loxodonta africana example.pdf", 
+#     width = 6.5,
+#     height = 6.5)
+# 
+# layout(mat = matrix(c(1,3,
+#                       1,3,
+#                       1,4,
+#                       2,4,
+#                       2,5,
+#                       2,5), nrow = 6, byrow = T))
+# 
+# # Plot this
+# #par(mfrow = c(3,1))
+# op <- par()
+# par(mar = c(2.1, 4.1, 2.1, 2.1))
+# plot(NA, 
+#      xlab = "",
+#      ylab = "Displacement (km)",
+#      xlim = c(0, (max_days * 24 * 60) / (60 * 24)),
+#      ylim = c(1, 100000/1000),
+#      #log = "y",
+#      las = 1,
+#      frame = F,
+#      xaxt = "n",
+#      )
+# axis(1, at = seq(0,5), labels = rep("", 6))
+# for(i in frug_events){
+#   dd <- dat %>% filter(frug_event_id == i)
+#   
+#   lines(dd$time_diff_min / (60 * 24),
+#         dd$displacement/1000,
+#         col = rgb(0,0,0, 0.3))
+#   # print(i)
+#   # Sys.sleep(2)#stop()#
+# }
+# 
+# 
+# 
+# par(mar = c(5.1, 4.1, 0.1, 2.1))
+# plot(NA, 
+#      xlab = "Time since hypothetical frugivory event (days)",
+#      ylab = "Displacement (km)",
+#      xlim = c(0, (max_days * 24 * 60) / (60 * 24)),
+#      ylim = c(0.01, 100000/1000),
+#      log = "y",
+#      las = 1,
+#      frame = F,
+#      yaxt = "n"
+# )
+# axis(2, at = c(0.01,0.1, 1, 10, 100), 
+#      labels = c(0.01,0.1, 1, 10, 100), 
+#      las = 1)
+# for(i in frug_events){
+#   dd <- dat %>% filter(frug_event_id == i)
+#   
+#   dd$displacement[which(dd$displacement == 0)] <- 0.1
+#   
+#   lines(dd$time_diff_min / (60 * 24),
+#         dd$displacement/1000,
+#         col = rgb(0,0,0, 0.3))
+# }
+# 
+# # Here's what the gut passage time distribution looks like for
+# # Loxodonta africana
+# 
+# par(mar = c(5.1, 4.1, 2.1, 2.1))
+# gpts <- (rlnorm(10000, meanlog = log(40), sdlog = 0.2) / 24) 
+# gpts %>% hist(main = "",
+#               freq = F,
+#               breaks = seq(0, 5, by = 0.25),
+#               xlab = "Gut passage time (days)",
+#               las = 1)
+# 
 # est_disp <- rep(NA, length(gpts))
 # ids <- unique(dat$individual.local.identifier)
 # for(i in 1:length(gpts)){
-#   dd <- dat %>% filter(individual.local.identifier == sample(ids, 1)) %>% 
+#   dd <- dat %>% filter(individual.local.identifier == sample(ids, 1)) %>%
 #     mutate(timeX = abs(time_diff_min - (gpts[i] * 60 * 24)))
 #   est_disp[i] <- dd$displacement[which.min(dd$timeX)]
 # }
-
-(est_disp/1000) %>% hist(main = "",
-                  freq = F,
-                  breaks = 21,
-                  xlab = "Dispersal distance (km)")
-
-(est_disp/1000) %>% log10() %>% hist(main = "",
-                  freq = F,
-                  breaks = 21,
-                  xlab = "Dispersal distance (km) log10 scale")
-
-
-
-
-dev.off()
-
-
-
+# 
+# (est_disp/1000) %>% hist(main = "",
+#                   freq = F,
+#                   breaks = 21,
+#                   xlab = "Dispersal distance (km)")
+# 
+# (est_disp/1000) %>% log10() %>% hist(main = "",
+#                   freq = F,
+#                   breaks = 21,
+#                   xlab = "Dispersal distance (km) log10 scale")
+# 
+# 
+# 
+# 
+# dev.off()
+# 
+# # shape <- mean^2 / sd^2
+# # rate <- mean / sd^2
+# # mean <- 4000
+# # sd <- 2
+# 
+# mod <- glm(est_disp ~ 1, family = "Gamma")
+# summary(mod)
+# mod_shape <- MASS::gamma.shape(mod)$alpha
+# mod_mean <- 1/coef(mod)[1]
+# 
+# 
+# mod_sd <- mod_mean^2 / mod_shape
+# mod_rate <- mod_mean / mod_sd^2
+# 
+# par(mfrow = c(2,2))
+# hist(est_disp)
+# hist(log(est_disp))
+# 
+# #hist(rgamma(n = 10000, shape = mod_shape, rate = mod_rate))
+# 
+# MASS::fitdistr(est_disp/10, "Gamma")#, start = list(shape = 1, rate = 0.001), lower = 0.0001)
+# hist(rgamma(n = 10000, shape = 1.5, rate = 0.003)*10)
+# hist(rgamma(n = 10000, shape = 1.5, rate = 0.003)*10)
+# 
+# 
+# 
+# #

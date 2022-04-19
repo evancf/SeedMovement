@@ -10,28 +10,42 @@ ipak(c("tidyverse",
        "lubridate"))
 
 
-# To test things out, will simulate an effect of gHM
-# Want to make this very strongly correlated with displacement
-dat$gHM <- NA
-for(i in unique(dat$frug_event_id)){
-  ind <- which(dat$frug_event_id == i)
-  
-  max_val <- max(dat$displacement[ind])
-  
-  dat$gHM[ind] <- abs(1-(max_val/17000))
-  
-}
+# Read in data
+
+move_df <- read.csv("./data/tidy/move_df.csv", header = T)
 
 
 
 
 # 
+dd <- move_df %>% filter(time_diff_min > 0) %>% 
+  filter(individual.taxon.canonical.name != "Milvus migrans") %>% 
+  filter(displacement < (200 * 1000)) # There are a few outliers
+dd$displacement[which(dd$displacement == 0)] <- min(dd$displacement[which(dd$displacement != 0)])
+
+# To test things out, will simulate an effect of gHM
+# Want to make this very strongly correlated with displacement
+dd$gHM <- NA
+
+for(j in unique(dd$individual.taxon.canonical.name)){
+  sp_set <- filter(dd, individual.taxon.canonical.name == j)
+  sp_max_val <- max(sp_set$displacement)
+  
+  for(i in unique(sp_set$frug_event_id)){
+    ind <- which(dd$frug_event_id == i)
+    
+    max_val <- max(dd$displacement[ind])
+    
+    dd$gHM[ind] <- abs(1-(max_val/sp_max_val))
+    
+  }
+}
 
 
-dd <- dat %>% filter(time_diff_min > 0)
+
 dataList <- list(
   
-  # Individual dda points
+  # Individual data points
   n = nrow(dd),
   time = dd$time_diff_min,
   displacement = dd$displacement/1000,
@@ -39,60 +53,21 @@ dataList <- list(
   # Frugivory event monitoring periods
   n_event = length(unique(dd$frug_event_id)),
   n_event_vec = as.numeric(as.factor(dd$frug_event_id)),
-  gHM = dd$gHM[!duplicated(dd$frug_event_id)],
+  gHM = dd$gHM[!duplicated(dd$frug_event_id)] + 0.01,
   
-  # Individuals
+  event_sp = dd$individual.taxon.canonical.name[!duplicated(dd$frug_event_id)] %>% 
+    as.factor() %>% as.numeric(),
+  
+  # Animal individuals
   n_id = length(unique(dd$individual.local.identifier)),
-  id = as.numeric(as.factor(dd$individual.local.identifier))
+  id = as.numeric(as.factor(dd$individual.local.identifier)),
+  
+  # Species
+  n_sp = length(unique(dd$individual.taxon.canonical.name)),
+  sp = as.numeric(as.factor(dd$individual.taxon.canonical.name))
   
 )
 
-# Define model
-
-sink("./analysis/displacement_jags.txt")
-cat(paste0("
-
-model {
-
-  # Likelihood
-
-  for(i in 1:n){
-
-    shape[i] <- pow(mean[i], 2) / pow(sd*sqrt(time[i]), 2)
-
-    rate[i] <- mean[i]  / pow(sd*sqrt(time[i]),2)
-
-    displacement[i] ~ dgamma(shape[i], rate[i])
-    mean[i] <- exp(a[n_event_vec[i]]) * time[i] / (exp(b[n_event_vec[i]]) + time[i]) # Monod
-  }
-  
-  for(j in 1:(n_event)){
-  
-    a[j] <- beta_a_0 + beta_a_ghm * gHM[j]
-    b[j] <- beta_b_0 + beta_b_ghm * gHM[j]
-    #ind_mean_sdd[j] <- exp(a[j]) * 2400 / (exp(b[j]) + 2400) + beta_ghm * gHM[j]
-  }
-
-  
-  # Priors
-
-  beta_a_0 ~ dnorm(0, 0.001)
-  beta_b_0 ~ dnorm(0, 0.001)
-  beta_a_ghm ~ dnorm(0, 0.001)
-  beta_b_ghm ~ dnorm(0, 0.001)
-  
-  sd ~ dunif(0, 100)
-
-  # Derived quantities
-  
-  
-  
-
-
-} # End of model
-
-    "),fill=TRUE)
-sink()
 
 
 sink("./analysis/displacement_jags.txt")
@@ -104,22 +79,32 @@ model {
 
   for(i in 1:n){
 
-    shape[i] <- pow(mean[i], 2) / pow(sd*sqrt(time[i]), 2)
+    shape[i] <- pow(mean[i], 2) / pow(sd[sp[i]] * sqrt(time[i]), 2)
 
-    rate[i] <- mean[i]  / pow(sd*sqrt(time[i]),2)
+    rate[i] <- mean[i]  / pow(sd[sp[i]] * sqrt(time[i]),2)
 
-    displacement[i] ~ dgamma(shape[i], rate[i])
-    mean[i] <- exp(a) * time[i] / (exp(b) + time[i]) * (1 + beta_a_ghm * gHM[n_event_vec[i]])
+    displacement[i] ~ dgamma(shape[i], rate[i])# T(0.0001, )
+    mean[i] <- mean_peak[n_event_vec[i]] * time[i] / (exp(b[sp[i]]) + time[i])
+  }
+  
+  for(j in 1:n_event){
+    mean_peak[j] <- exp(a[event_sp[j]] + beta_ghm[event_sp[j]] * gHM[j])
   }
 
   
   # Priors
-
-  a ~ dnorm(0, 0.001)
-  b ~ dnorm(0, 0.001)
-  beta_a_ghm ~ dnorm(0, 0.001)
+  for(k in 1:n_sp){
+    a[k] ~ dnorm(0, 0.01)
+    b[k] ~ dnorm(0, 0.01)
+    
+    beta_ghm[k] ~ dnorm(beta_ghm_mean, beta_ghm_tau)# T(-1,1)
   
-  sd ~ dunif(0, 100)
+    sd[k] ~ dunif(0, 10)
+  }
+  
+  beta_ghm_mean ~ dnorm(0, 0.01)
+  beta_ghm_tau <- pow(beta_ghm_sd, -2)
+  beta_ghm_sd ~ dunif(0, 10)
 
   # Derived quantities
   
@@ -135,22 +120,20 @@ sink()
 
 ipak("rjags")
 
-reps <- length(unique(dd$frug_event_id))
-inits <- list(list(a = rep(4, reps), b = rep(5, reps)),
-              list(a = rep(4, reps), b = rep(5, reps)),
-              list(a = rep(4, reps), b = rep(5, reps)))
 
-# inits <- list(list(beta_a_0 = rep(3, 1), beta_b_0 = rep(-1, 1)),
-#               list(beta_a_0 = rep(4, 1), beta_b_0 = rep(-4, 1)),
-#               list(beta_a_0 = rep(5, 1), beta_b_0 = rep(-2, 1)))
+reps <- length(unique(dd$individual.taxon.canonical.name))
+inits <- list(list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)),
+              list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)),
+              list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)))
 
-
-displacement_jags <- jags.model("./analysis/displacement_jags.txt", data = dataList,
-                           n.adapt = 1000,
-                           n.chains = 3#, inits = inits
+displacement_jags <- jags.model("./analysis/displacement_jags.txt", 
+                                data = dataList,
+                                n.adapt = 1000,
+                                n.chains = 3, 
+                                inits = inits
 )
 
-update(displacement_jags, 1000)
+update(displacement_jags, 2000)
 
 #save(file = "./outputs/gamma_jags_model_temp_precip.RData", displacement_jags)
 
@@ -163,13 +146,14 @@ variables_to_sample <- c("beta_a_0",
 
 variables_to_sample <- c("a",
                          "b",
-                         "beta_a_ghm",
+                         "beta_ghm",
+                         "beta_ghm_mean",
                          "sd")
 
 displacement_samples <- coda.samples(displacement_jags,
                                 variable.names = variables_to_sample,
-                                thin = 10,
-                                n.iter = 1000)
+                                thin = 25,
+                                n.iter = 5000)
 plot(displacement_samples)
 
 
