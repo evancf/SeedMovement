@@ -2,12 +2,15 @@
 # accept the license terms online before downloading
 
 # Load packages ----------------------------------------------------------------
-source(list.files("./R", full.names = T))
+sapply(list.files("./R", full.names = T), source)
 
 ipak(c("tidyverse",
        "move",
        "lutz",
-       "lubridate"))
+       "lubridate",
+       "data.table",
+       "taxize",
+       "traitdata"))
 
 # Note that you need to log into movebank - I have a 00_movebank_login.R file
 # where I have stored my username and password in this format:
@@ -15,17 +18,28 @@ ipak(c("tidyverse",
 # curl_login <- movebankLogin(username = "username",
 #                             password = "password")
 
-
 # Load data --------------------------------------------------------------------
 
 movebank_files <- list.files("./data/Movebank raw", full.names = T)
+movebank_files_short <- list.files("./data/Movebank raw", full.names = F)
+manipulated_files <- list.files("./data/tidy/Movebank manipulated", full.names = T)
+manipulated_files_short <- list.files("./data/tidy/Movebank manipulated", full.names = F)
 
-move_list <- list()
+movebank_files <- movebank_files[!(movebank_files_short %in% manipulated_files_short)]
+
+
+hyphen_to_dot <- function(x){
+  gsub("-", ".", x, fixed = T)
+}
 
 for(file in movebank_files){
   
   #file <- movebank_files[6]
-  dat <- read.csv(file)
+  dat <- fread(file) %>% as.data.frame()
+  colnames(dat) <- colnames(dat) %>% hyphen_to_dot
+  
+  # It's easier to treat event ide as numberic rather than int64
+  dat$event.id <- as.numeric(dat$event.id)
   
   # Skip if there's no data
   if(dim(dat)[1] == 0) next()
@@ -36,9 +50,48 @@ for(file in movebank_files){
   # Keep only rows with long/lat location data
   dat <- dat[complete.cases(dat[,c("location.long", "location.lat")]),]
   
-  # Remove duplicate time-location-individual combos
-  dat <- dat[!duplicated(dat[,c("timestamp", "location.long", "location.lat",
-                    "individual.local.identifier")]),]
+  # # Remove duplicate time-location-individual combos
+  # dat <- dat[!duplicated(dat[,c("timestamp", "location.long", "location.lat",
+  #                   "individual.local.identifier")]),]
+  
+  
+  # Do a little data cleaning (more issues will certainly come up)
+  if(grepl("Milvus migrans", file)){
+    dat$individual.taxon.canonical.name <- "Milvus migrans"
+  }
+  if(grepl("Setophaga striata", file)){
+    dat$individual.taxon.canonical.name <- "Setophaga striata"
+  }
+  if(grepl("Blackpoll Warbler", file)){
+    dat$individual.taxon.canonical.name <- "Setophaga striata"
+  }
+  if(grepl("Crax globulosa", file)){
+    dat$individual.taxon.canonical.name <- "Crax globulosa"
+  }
+  if(grepl("Coyote Valley Bobcat Habitat Connectivity Study", file)){
+    dat$individual.taxon.canonical.name <- "Lynx rufus"
+  }
+  if(grepl("Lagostrophus fasciatus", file)){
+    dat$individual.taxon.canonical.name <- "Lagostrophus fasciatus"
+  }
+  if(grepl("Cassin's Vireo", file)){
+    dat$individual.taxon.canonical.name <- "Vireo cassinii"
+  }
+  if(grepl("Lowland tapirs, Tapirus terrestris, in", file)){
+    dat$individual.taxon.canonical.name <- "Tapirus terrestris"
+  }
+  if(grepl("Monitoring of Capra ibex (Bovidae) populations", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Capra ibex"
+  }
+  if(grepl("Wildebeest (Eastern white bearded) Mo", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Connochaetes taurinus"
+  }
+  
+  # This one doesn't have species-level data
+  if(grepl("Local flight paths of nocturnally migrating birds", file)){
+    next()
+  }
+
   
   # Change column formats ---------------------------------------
   #head(dat)
@@ -51,17 +104,51 @@ for(file in movebank_files){
                                lon = mean(dat$location.long, na.rm = T),
                                warn = F)
   
-  dat$localtime <- format(dat$timestamp, tz = local_tz, usetz = T)
-  dat$date <- as.Date(dat$localtime)
-  dat$hour <- dat$localtime %>% 
+  dat$localtime <- format(dat$timestamp, tz = local_tz, usetz = T,
+                          format = "%Y-%m-%d %H:%M:%S")
+  #dat$date <- as.Date(dat$localtime)
+  hour <- dat$localtime %>% 
     substr(12, 13) %>% 
     as.numeric()
-  dat$day <- ifelse(dat$hour > 6 & dat$hour < 18,
+  dat$day <- ifelse(hour > 6 & hour < 18,
                     T, F)
   
   
   # Sort by time for each individual
   dat <- dat %>% arrange(individual.local.identifier, timestamp)
+  
+  
+  # Reduce temporal resolution if < 5 minutes by iteratively removing 
+  # timesteps that are less than 5 minutes from the next. There must be 
+  # a more clever way to do this, but here's a while-loop way
+  
+  temp_res_check <- F
+  while(temp_res_check == F){
+    
+    dat$keep_vec <- dat %>%
+      group_by(individual.local.identifier) %>%
+      mutate(diff = timestamp - lag(timestamp),
+             diff_mins = as.numeric(diff, units = 'mins'),
+             odd = row_number() %% 2) %>% 
+      mutate(keep = ifelse(diff_mins < 5 & odd == 1, 0, 1)) %>% 
+      mutate(keep = ifelse(is.na(keep), 1, keep)) %>% 
+      pull(keep)
+    
+    temp_res_check <- all(dat$keep_vec == 1)
+    
+    dat <- dat[dat$keep_vec == 1,]
+    #print(dim(dat))
+    
+     
+    #asdf <- dat %>% filter(individual.local.identifier == levels(as.factor(individual.local.identifier))[1])
+    #hist(asdf$location.long)
+    
+    #dat %>% dplyr::select(timestamp, keep_vec)
+    
+
+  }
+  
+
   
   
   # Manipulate to get displacement values ---------------------------------------
@@ -70,16 +157,37 @@ for(file in movebank_files){
   # We'll basically do stratified sampling to get day-time timestamps
   # for each individual
   
-  diurnal <- T
-  days_to_sample <- 20
+  focal_sp <- focal_sp_class <- nocturnal <- diurnal <- body_mass <- max_days <- NA
+  
+  # Want to change the sampling time based on the taxon identity
+  focal_sp <- unique(dat$individual.taxon.canonical.name) %>% sort()
+  focal_sp_class <- tax_name(sci = focal_sp, get = "class", db = "ncbi")$class
+  
+  if(focal_sp_class == "Aves"){
+    nocturnal <- elton_birds %>% filter(scientificNameStd %in% focal_sp) %>% pull(Nocturnal)
+    diurnal <- nocturnal == 0
+    
+    body_mass <- elton_birds %>% filter(scientificNameStd %in% focal_sp) %>% pull(BodyMass.Value)
+    max_days <- ceiling(exp(-5.64120 + 0.54627 * log(body_mass)) * 2)
+  }
+  if(focal_sp_class == "Mammalia"){
+    diurnal <- elton_mammals %>% filter(scientificNameStd %in% focal_sp) %>% pull(Activity.Diurnal)
+    diurnal <- diurnal == 1
+
+    body_mass <- elton_mammals %>% filter(scientificNameStd %in% focal_sp) %>% pull(BodyMass.Value)
+    max_days <- ceiling(exp(-5.64120 + 0.54627 * log(body_mass)) * 2)
+    max_days <- ifelse(max_days > 10, 10, max_days)
+  }
+  
   max_frug_events_per_individ <- 5
-  max_days <- 2
+  
   
   set.seed(4)
   # # Here's one way to chose random frugivory events for each individual.
   # # The downside is that it's possible for frugivory event plus the subsequent
   # # monitoring period to overlap with another one. The for loop version below
   # # corrects for that, although it's really clunky...
+  # days_to_sample <- 20
   # frug_events <- dat %>% as_tibble() %>%
   #   filter(day == diurnal) %>%
   #   group_by(individual.local.identifier) %>%
@@ -87,80 +195,89 @@ for(file in movebank_files){
   #   pull(event.id)
   
   frug_events <- c()
-  for(id in unique(dat$individual.local.identifier)){ # id <- unique(dat$individual.local.identifier)[1]
-    id_dat <- dat %>% filter(individual.local.identifier == id)
-    
-    
-    fe_dat <- tibble(event.id = id_dat$event.id,
-                     time = as.numeric(difftime(id_dat$timestamp, 
-                                                min(id_dat$timestamp),
-                                                units = "mins")),
-                     event = 0)
-    
-    # Sample one event just to get things started
-    fe_dat$event[sample(1:nrow(fe_dat), 1)] <- 1
-    
-    # A couple objects for the while loop
-    choose_events <- T
-    counter <- 1
-    
-    # While loop that runs while either there are potential (sort of)
-    # non-independent monitoring periods or there is the max number of
-    # monitoring periods per individual.
-    while(choose_events == T){
+  for(sp in 1:length(focal_sp)){
+    for(id in unique(dat$individual.local.identifier)){
+      id_dat <- dat %>% filter(individual.local.identifier == id & 
+                                 individual.taxon.canonical.name == focal_sp[sp] &
+                                 day == diurnal[sp]) 
+      # This last line ensures that the frugivory event is only during the
+      # active period for the species.
       
-      # Figure out how much time before or time after another frugivory
-      # event
-      fe_dat <- fe_dat %>%
-        mutate(tmpG = cumsum(c(FALSE, as.logical(diff(event))))) %>%
-        mutate(tmp_a = c(0, diff(time)) * !event,
-               tmp_b = c(diff(time), 0) * !event) %>%
-        group_by(tmpG) %>%
-        mutate(tae = cumsum(tmp_a),
-               tbe = rev(cumsum(rev(tmp_b)))) %>%
-        ungroup() %>%
-        dplyr::select(-c(tmp_a, tmp_b, tmpG))
-      # This treats the first and last rows as there's an event there.
-      # Want to avoid not choosing those event.ids due to that, so fill
-      # in some big time after event and time before events there
-      first_event <- which(fe_dat$event == 1)[1]
-      last_event <- which(fe_dat$event == 1) %>% tail(1)
-      if(first_event > 1){
-        fe_dat$tae[1:(first_event-1)] <- 10^5
-      }
-      if(last_event < nrow(fe_dat)){
-        fe_dat$tbe[(last_event+1):nrow(fe_dat)] <- 10^5
-      }
-      # Now actually chose the next frugivory event
+      if(dim(id_dat)[1] == 0) {next()}
       
-      possible_frugivory_events <- which(fe_dat$tae > (max_days * 60 * 24) &
-                                           fe_dat$tbe > (max_days * 60 * 24))
       
-      # If there are potential frugivory events, sample one and go
-      # to next iteration of the while loop. Will only do this until there
-      # are the maximum number of events per individual. And if there aren't
-      # other potential events to chose, move on to the next individual in
-      # the for loop
-      if(length(possible_frugivory_events) > 0){
+      fe_dat <- tibble(event.id = id_dat$event.id,
+                       time = as.numeric(difftime(id_dat$timestamp, 
+                                                  min(id_dat$timestamp),
+                                                  units = "mins")),
+                       event = 0)
+      
+      # Sample one event just to get things started
+      fe_dat$event[sample(1:nrow(fe_dat), 1)] <- 1
+      
+      # A couple objects for the while loop
+      choose_events <- T
+      counter <- 1
+      
+      # While loop that runs while either there are potential (sort of)
+      # non-independent monitoring periods or there is the max number of
+      # monitoring periods per individual.
+      while(choose_events == T){
         
-        fe_dat$event[sample(possible_frugivory_events, 1)] <- 1
+        # Figure out how much time before or time after another frugivory
+        # event
+        fe_dat <- fe_dat %>%
+          mutate(tmpG = cumsum(c(FALSE, as.logical(diff(event))))) %>%
+          mutate(tmp_a = c(0, diff(time)) * !event,
+                 tmp_b = c(diff(time), 0) * !event) %>%
+          group_by(tmpG) %>%
+          mutate(tae = cumsum(tmp_a),
+                 tbe = rev(cumsum(rev(tmp_b)))) %>%
+          ungroup() %>%
+          dplyr::select(-c(tmp_a, tmp_b, tmpG))
+        # This treats the first and last rows as there's an event there.
+        # Want to avoid not choosing those event.ids due to that, so fill
+        # in some big time after event and time before events there
+        first_event <- which(fe_dat$event == 1)[1]
+        last_event <- which(fe_dat$event == 1) %>% tail(1)
+        if(first_event > 1){
+          fe_dat$tae[1:(first_event-1)] <- 10^5
+        }
+        if(last_event < nrow(fe_dat)){
+          fe_dat$tbe[(last_event+1):nrow(fe_dat)] <- 10^5
+        }
+        # Now actually chose the next frugivory event
         
-        counter <- counter + 1
+        possible_frugivory_events <- which(fe_dat$tae > (max_days[sp] * 60 * 24) &
+                                             fe_dat$tbe > (max_days[sp] * 60 * 24))
         
-        if(counter == max_frug_events_per_individ){
+        # If there are potential frugivory events, sample one and go
+        # to next iteration of the while loop. Will only do this until there
+        # are the maximum number of events per individual. And if there aren't
+        # other potential events to chose, move on to the next individual in
+        # the for loop
+        if(length(possible_frugivory_events) > 0){
+          
+          fe_dat$event[sample(possible_frugivory_events, 1)] <- 1
+          
+          counter <- counter + 1
+          
+          if(counter == max_frug_events_per_individ){
+            choose_events <- F
+          }
+          
+        } else{
           choose_events <- F
         }
         
-      } else{
-        choose_events <- F
-      }
+      } # End of while loop
       
-    } # End of while loop
-    
-    frug_events <- c(frug_events, fe_dat$event.id[which(fe_dat$event == 1)])
-    
-  } # End of for loop
+      frug_events <- c(frug_events, fe_dat$event.id[which(fe_dat$event == 1)])
+      
+    } # End of individual for loop
+  }  # End of species for loop
   
+  if(length(frug_events) == 0) { next()}
   
   dat$frug_event_id <- NA
   dat$frug_event_timestamp <- as.POSIXct(NA, tz = "UTC")
@@ -176,6 +293,13 @@ for(file in movebank_files){
                           dat$timestamp >= time_start &
                           dat$timestamp <= time_end)
     
+    # Check if the animal was recorded as dead during this track.
+    if("mortality.status" %in% colnames(dat)){
+      # Skip if it's recorded as dead
+      if("dead" %in% dat$mortality.status[track_inds]){ next()}
+    }
+    
+    
     dat$frug_event_id[track_inds] <- i
     dat$frug_event_timestamp[track_inds] <- as.POSIXct(dat$timestamp[event_ind], tz = "UTC")
     dat$frug_event_long[track_inds] <- dat$location.long[event_ind]
@@ -183,11 +307,16 @@ for(file in movebank_files){
     
   }
   
-  # Calculate displacement values
+  # Will keep only data associated with the frugivory events and monitoring
+  # period
+  dat <- dat %>% filter(!is.na(frug_event_id))
   
+  
+  # Calculate displacement values and difference in time values
   dat$displacement <- apply(dat[,c("location.long", "location.lat",
                                    "frug_event_long", "frug_event_lat")], 
-                            1, function(x){
+                            1, 
+                            function(x){
                               distGeo(c(x[1], x[2]), 
                                       c(x[3], x[4]))
                             })
@@ -198,9 +327,7 @@ for(file in movebank_files){
                                         units = "mins")
                              })
   
-  # Will keep only data associated with the frugivory events and monitoring
-  # period
-  dat <- dat %>% filter(!is.na(displacement))
+
 
   # # Plot the individuals from this study
   # par(mfrow = c(2,1))
@@ -246,46 +373,60 @@ for(file in movebank_files){
   #         col = rgb(0,0,0, 0.3))
   # }
   
-  # Do a little data cleaning (more issues will certainly come up)
-  if(grepl("Milvus migrans", file)){
-    dat$individual.local.identifier <- "Milvus migrans"
-  }
+
   
   # Save the displacement data to csv? Probably want to reduce the number
   # of columns
   
-  move_list[[file]] <- dat
+  
+  dat <- dat %>% 
+    dplyr::select("event.id", "timestamp", "localtime", 
+                  "location.long", "location.lat",
+                  "individual.taxon.canonical.name", 
+                  "individual.local.identifier",
+                  "frug_event_id", 
+                  "displacement", "time_diff_min", 
+                  "study.name")
+  
+  
+  output_file <- gsub("./data/Movebank raw/", "", file, fixed = T)
+  write.csv(dat, file = paste0("./data/tidy/Movebank manipulated/", output_file))
   
   print(file)
 }
 
 
-# Decide which columns to keep
-
-cols_to_keep <- c("timestamp",
-                  "localtime",
-                  "location.long",
-                  "location.lat",
-                  "frug_event_id",
-                  "individual.taxon.canonical.name",
-                  "individual.local.identifier",
-                  "time_diff_min",
-                  "displacement",
-                  "study.name")
-
-# Now make a dataframe
-move_list2 <- lapply(move_list, function(x){
-  x <- x %>% dplyr::select(cols_to_keep)
-})
-
-move_df <- do.call(rbind, move_list2)
-
-# Here are some issues that should be dealt with in the above for loop
-# move_df[which(is.na(move_df$individual.taxon.canonical.name)), 
-#         "individual.taxon.canonical.name"] <- "Milvus migrans"
 
 
-write.csv(move_df, file = "./data/tidy/move_df.csv")
+
+# # Dealing with taxonomy and traits ---------------------------------------------
+# 
+# ipak("bdc")
+# library("taxadb")
+# #ipak("traitdata")
+# remotes::install_github("RS-eco/traitdata", build_vignettes = T, force=T)
+# 
+# move_spp <- unique(move_df$individual.taxon.canonical.name)
+# 
+# query_names <- bdc_query_names_taxadb(
+#   sci_name            = move_spp,
+#   replace_synonyms    = TRUE, # replace synonyms by accepted names?
+#   suggest_names       = TRUE, # try to found a candidate name for misspelled names?
+#   suggestion_distance = 0.9, # distance between the searched and suggested names
+#   db                  = "gbif", # taxonomic database
+#   rank_name           = "Animalia", # a taxonomic rank
+#   rank                = "kingdom", # name of the taxonomic rank
+#   parallel            = FALSE, # should parallel processing be used?
+#   ncores              = 2, # number of cores to be used in the parallelization process
+#   export_accepted     = FALSE # save names linked to multiple accepted names
+# )
+# 
+# 
+# 
+# # Output the file -----------------------------------------------------------
+# 
+# write.csv(move_df, file = "./data/tidy/move_df.csv")
+
 
 
 # # Plot some examples -----------------------------------------------------------
