@@ -222,20 +222,22 @@ model {
 
   for(i in 1:n){
     displacement[i] ~ dnorm(mean[i], tau[sp[i]])
-    mean[i] <- beta_0[sp[i]] + beta_t[sp[i]] * time[i]# + beta_ghm[sp[i]] * gHM[i]
+    mean[i] <- beta_0[sp[i]] + exp(beta_t[sp[i]]) * time[i]# + beta_ghm[sp[i]] * gHM[i]
   }
   
   # Priors
   for(j in 1:n_sp){
-    beta_0[j] ~ dnorm(0, 0.01)
-    beta_t[j] ~ dnorm(0, 0.01)
-    beta_ghm[j] ~ dnorm(0, 0.01)
+    beta_0[j] ~ dnorm(group_mean_beta_0[animal_group_of_species[j]], 0.01)
+    beta_t[j] ~ dnorm(group_mean_beta_t[animal_group_of_species[j]], 0.01)
+    #beta_ghm[j] ~ dnormgroup_mean_ghm[animal_group_of_species[j]], 0.01)
     
     tau[j] <- pow(sd[j], -2)
     sd[j] ~ dnorm(group_mean_sd[animal_group_of_species[j]], 0.01) T(0,) # half normal sd following Gelman et al. 2006
   }
   
   for(k in 1:n_animal_group){
+    group_mean_beta_0[k] ~ dnorm(0, 0.01)
+    group_mean_beta_t[k] ~ dnorm(0, 0.1)
     group_mean_sd[k] ~ dunif(0, 10)
   }
   
@@ -258,12 +260,12 @@ inits <- list(list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)),
 
 displacement_jags <- jags.model("./analysis/displacement_jags.txt", 
                                 data = dataList,
-                                n.adapt = 100,
+                                n.adapt = 200,
                                 n.chains = 3, 
                                 #inits = inits
 )
 
-update(displacement_jags, 400)
+update(displacement_jags, 1000)
 
 #save(file = "./outputs/gamma_jags_model_temp_precip.RData", displacement_jags)
 
@@ -284,12 +286,14 @@ variables_to_sample <- c("beta_0",
                          "beta_t",
                          #"beta_ghm",
                          "sd",
+                         "group_mean_beta_0",
+                         "group_mean_beta_t",
                          "group_mean_sd")
 
 displacement_samples <- coda.samples(displacement_jags,
                                 variable.names = variables_to_sample,
-                                thin = 5,
-                                n.iter = 500)
+                                thin = 20,
+                                n.iter = 5000)
 plot(displacement_samples)
 
 

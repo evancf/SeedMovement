@@ -10,13 +10,30 @@ ipak(c("tidyverse",
        "lubridate",
        "data.table",
        "taxize",
-       "traitdata"))
+       "traitdata",
+       "RCurl"))
 
 # Note that you need to log into movebank - I have a 00_movebank_login.R file
 # where I have stored my username and password in this format:
 
 # curl_login <- movebankLogin(username = "username",
 #                             password = "password")
+
+
+
+# Get some info about sensors from the API
+opts <- curlOptions(userpwd = "evanfricke:Hello_567vbv") 
+
+sensor_ids <- getURL("https://www.movebank.org/movebank/service/direct-read?entity_type=tag_type",
+                     .opts = opts)
+sensor_ids <- read.csv(text = sensor_ids)
+
+sensors_to_use <- sensor_ids %>% 
+  filter(is_location_sensor == "true")
+
+short_term_sensors <- c(653,673,2365682,1239574236)
+long_term_sensors <- c(397,82798,3886361)
+
 
 # Load data --------------------------------------------------------------------
 
@@ -31,14 +48,45 @@ movebank_files <- movebank_files[!(movebank_files_short %in% manipulated_files_s
 hyphen_to_dot <- function(x){
   gsub("-", ".", x, fixed = T)
 }
+underscore_to_dot <- function(x){
+  gsub("_", ".", x, fixed = T)
+}
+
+
+
+problems <- c()
 
 for(file in movebank_files){
   
   #file <- movebank_files[6]
   dat <- fread(file) %>% as.data.frame()
-  colnames(dat) <- colnames(dat) %>% hyphen_to_dot
   
-  # It's easier to treat event ide as numberic rather than int64
+  if(dim(dat)[1] < 2) next()
+  
+  # Column manipulation because of how data were initially ingested...
+  colnames(dat) <- colnames(dat) %>% hyphen_to_dot() %>% underscore_to_dot()
+  
+  # if("sensor.type.id" %in% colnames(id_dat)){
+  #   if(id_dat$sensor.type.id[1] == "3886361"){
+  #     old_max_days <- max_days
+  #     max_days <- 4
+  #   }
+  # }
+  # 
+  # if("sensor.type" %in% colnames(id_dat)){
+  #   if(grepl("geolocator",id_dat$sensor.type[1])){
+  #     old_max_days <- max_days
+  #     max_days <- 4
+  #   }
+  # }
+  # 
+  # # Reset max days if it's a geolocator study.
+  # if(!is.na(old_max_days)){
+  #   max_days <- old_max_days
+  # }
+  
+  
+  # It's easier to treat event id as numeric rather than int64
   dat$event.id <- as.numeric(dat$event.id)
   
   # Skip if there's no data
@@ -55,7 +103,35 @@ for(file in movebank_files){
   #                   "individual.local.identifier")]),]
   
   
+  
+
+  
   # Do a little data cleaning (more issues will certainly come up)
+  
+  if(grepl("./data/Movebank raw/Foraging ecology of masked boobies (Sula dactylatra) in the world’s largest “oceanic desert”.csv", file)){
+    dat$individual.taxon.canonical.name <- "Sula dactylatra"
+  }
+  
+  if(grepl("./data/Movebank raw/ECOPATH, Indian yellow-nosed albatross, Boulinier et al., Amsterdam Island.csv", file)){
+    dat$individual.taxon.canonical.name <- "Thalassarche carteri"
+  }
+  
+  if(grepl("./data/Movebank raw/ECOPATH, Brown skua, Boulinier et al., Amsterdam Island.csv", file)){
+    dat$individual.taxon.canonical.name <- "Stercorarius antarcticus"
+  }
+  
+  if(grepl("./data/Movebank raw/Biology of birds practical.csv", file)){
+    dat$individual.taxon.canonical.name <- "Anser albifrons"
+  }
+  
+  if(grepl("./data/Movebank raw/BfRw Petrogale lateralis.csv", file)){
+    dat$individual.taxon.canonical.name <- "Petrogale lateralis"
+  }
+
+  if(grepl("Andean Condor Vultur gryphus Bariloche, Argentina, 2013-2018", file)){
+    dat$individual.taxon.canonical.name <- "Vultur gryphus"
+  }
+  
   if(grepl("Milvus migrans", file)){
     dat$individual.taxon.canonical.name <- "Milvus migrans"
   }
@@ -93,12 +169,26 @@ for(file in movebank_files){
   }
 
   
+  # Find cases where the species name is not recorded
+  if(dat$individual.taxon.canonical.name %>% unique() %>% is.na() %>% all()){
+    problems <- c(problems, paste("no species name for", file))
+    next()
+  } 
+  if(all(unique(dat$individual.taxon.canonical.name) == "")){
+    problems <- c(problems, paste("no species name for", file))
+    next()
+  } 
+  
+  dat <- dat %>% filter(individual.taxon.canonical.name != "")
+  
   # Change column formats ---------------------------------------
   #head(dat)
   #str(dat)
   
   # Time
   dat$timestamp <- as.POSIXct(dat$timestamp, tz = "UTC")
+  
+  dat <- dat %>% filter(location.lat > -180)
   
   local_tz <- tz_lookup_coords(lat = mean(dat$location.lat, na.rm = T),
                                lon = mean(dat$location.long, na.rm = T),
@@ -147,9 +237,7 @@ for(file in movebank_files){
     
 
   }
-  
 
-  
   
   # Manipulate to get displacement values ---------------------------------------
   
@@ -162,6 +250,9 @@ for(file in movebank_files){
   # Want to change the sampling time based on the taxon identity
   focal_sp <- unique(dat$individual.taxon.canonical.name) %>% sort()
   focal_sp_class <- tax_name(sci = focal_sp, get = "class", db = "ncbi")$class
+  
+  # Will skip the 
+  if(!focal_sp_class %in% c("Aves", "Mammalia")) next()
   
   if(focal_sp_class == "Aves"){
     nocturnal <- elton_birds %>% filter(scientificNameStd %in% focal_sp) %>% pull(Nocturnal)
@@ -373,12 +464,13 @@ for(file in movebank_files){
   #         col = rgb(0,0,0, 0.3))
   # }
   
+  if(dim(dat)[1] == 0) next()
 
   
   # Save the displacement data to csv? Probably want to reduce the number
   # of columns
   
-  
+  if("study.name" %in% colnames(dat)){
   dat <- dat %>% 
     dplyr::select("event.id", "timestamp", "localtime", 
                   "location.long", "location.lat",
@@ -387,6 +479,17 @@ for(file in movebank_files){
                   "frug_event_id", 
                   "displacement", "time_diff_min", 
                   "study.name")
+  }
+  if("study.id" %in% colnames(dat)){
+    dat <- dat %>% 
+      dplyr::select("event.id", "timestamp", "localtime", 
+                    "location.long", "location.lat",
+                    "individual.taxon.canonical.name", 
+                    "individual.local.identifier",
+                    "frug_event_id", 
+                    "displacement", "time_diff_min", 
+                    "study.id")
+  }
   
   
   output_file <- gsub("./data/Movebank raw/", "", file, fixed = T)
