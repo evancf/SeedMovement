@@ -96,7 +96,10 @@ for(file in movebank_files){
   dat$individual.local.identifier %>% table() %>% sort()
   
   # Keep only rows with long/lat location data
-  dat <- dat[complete.cases(dat[,c("location.long", "location.lat")]),]
+  dat <- dat[complete.cases(dat[,c("location.long", "location.lat")]),] %>% 
+    filter(location.lat < 90 & location.lat > -90) %>% 
+    filter(location.long < 360 & location.long > -360) %>% 
+    filter(!grepl("calibration", individual.local.identifier))
   
   # # Remove duplicate time-location-individual combos
   # dat <- dat[!duplicated(dat[,c("timestamp", "location.long", "location.lat",
@@ -104,9 +107,133 @@ for(file in movebank_files){
   
   
   
+  
+  # Some files we just want to skip
+  
+  if(file %in% c("./data/Movebank raw/Feral cats and fenced reserves.csv",
+                 "./data/Movebank raw/GPS calibration data (global).csv",
+                 "./data/Movebank raw/Homing Pigeons-Magnetic sense2.csv",
+                 "./data/Movebank raw/ICARUS Bass-Rock Gannets.csv",
+                 "./data/Movebank raw/ICARUS Bhutan Nawang Norbu.csv",
+                 "./data/Movebank raw/ICARUS Canada 2021.csv",
+                 "./data/Movebank raw/ICARUS Cuckoo South Korea.csv",
+                 "./data/Movebank raw/ICARUS Latvia.csv",
+                 "./data/Movebank raw/ICARUS marine Oregon.csv",
+                 "./data/Movebank raw/ICARUS Ocean Drifter.csv",
+                 "./data/Movebank raw/ICARUS Pinyon Jay.csv",
+                 "./data/Movebank raw/Lesser Kestrel Rehab Ramat Hanadiv.csv",
+                 "./data/Movebank raw/ICARUS South Africa 2021.csv",
+                 "./data/Movebank raw/ICARUS South Africa Ear tags.csv",
+                 "./data/Movebank raw/Larus canus.csv",
+                 "./data/Movebank raw/Peregrine Falcon Hungary - Comparing bird and human soaring strategies.csv", # Uncertain if falcon or person gps data
+                 "./data/Movebank raw/Local flight paths of nocturnally migrating birds.csv", # No species specific data
+                 "./data/Movebank raw/MAP-PUBLIC-PART-RESTR.csv", # Not enough metadata to interpret
+                 "./data/Movebank raw/MAP-PUBLIC.csv", # Same as above
+                 "./data/Movebank raw/milsar-feed-test-1.csv",
+                 "./data/Movebank raw/Movement Workshop Eagle Practice Data.csv", # No permission
+                 "./data/Movebank raw/Movement Ecology of Campo Miners Geositta poeciloptera.csv",
+                 "./data/Movebank raw/Pintail in Olonne Marsh (France).csv",
+                 "./data/Movebank raw/Plastic bottle tracking .csv",
+                 "./data/Movebank raw/Vulture_CTT_CapeMay.csv")){
+    # Apparently no deployed data here...
+    next()
+  }
+  
+  if(grepl("Bewick's Swan        Eileen Rees.csv", file, fixed = T)){
+    next()
+  }
+  
+  if(grepl("Blue_crane_Overberg_South_Africa", file, fixed = T)){
+    next()
+  }
+  
+  if(grepl("Central Valley shorebird movements and wetland connectivity", file, fixed = T)){
+    # Apparently no deployed data here...
+    next()
+  }
+  
+  if(grepl("Estimating encounter location distributions from animal tracking data", file, fixed = T)){
+    # Apparently no deployed data here...
+    next()
+  }
+  
+  if(grepl("DLC Pilot ACC, Lemur catta", file, fixed = T)){
+    # Not sure what's happening here...
+    next()
+  }
+  
+  if(grepl("Druidtest_sufan", file, fixed = T)){
+    # Not sure what's happening here...
+    next()
+  }
+  
+  
+  
+
+  
 
   
   # Do a little data cleaning (more issues will certainly come up)
+  
+  if(grepl("Variability of White Stork flight", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Ciconia ciconia"
+  }
+  
+  if(grepl("St. Louis Box Turtle Project", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Terrapene mexicana"
+  }
+  
+  if(grepl("Pernis_apivorus_Byholm", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Pernis apivorus"
+  }
+  
+  if(grepl("Ovis aries di Virgilio Patagonia", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Ovis aries"
+  }
+  
+  if(grepl("ortolan light logger tracking", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Emberiza hortulana"
+  }
+  
+  if(grepl("Movement data from a Malayan krait", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Bungarus candidus"
+  }
+  
+  if(grepl("Monitoring of Capra ibex (Bovidae) populations", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Capra ibex"
+  }
+  
+  if(grepl("Mangrove Cuckoo (Coccyzus minor) home range and seasonal movements", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Coccyzus minor"
+  }
+  
+  if(grepl("Green python Morelia viridis", file)){
+    dat$individual.taxon.canonical.name <- "Morelia viridis"
+  }
+  
+  if(grepl("Galapagos Tortoise Hatchling Study", file)){
+    dat$individual.taxon.canonical.name <- "Chelonoidis niger"
+  }
+
+  if(grepl("Eastern Box Turtle Tracking", file)){
+    dat$individual.taxon.canonical.name <- "Terrapene carolina"
+  }
+  
+  if(grepl("Caspian Terns, Columbia Plateau, WA, 2016", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Hydroprogne caspia"
+  }
+  
+  if(grepl("Calloselasma.rhodostoma_JG.Hilll_Sakaerat", file)){
+    dat$individual.taxon.canonical.name <- "Calloselasma rhodostoma"
+  }
+  
+  if(grepl("Canada geese (Branta canadensis).csv", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Branta canadensis"
+  }
+  
+  if(grepl("Blue whales Eastern North Pacific 2003 State-space model output", file)){
+    dat$individual.taxon.canonical.name <- "Balaenoptera musculus"
+  }
   
   if(grepl("./data/Movebank raw/Foraging ecology of masked boobies (Sula dactylatra) in the world’s largest “oceanic desert”.csv", file)){
     dat$individual.taxon.canonical.name <- "Sula dactylatra"
@@ -132,42 +259,43 @@ for(file in movebank_files){
     dat$individual.taxon.canonical.name <- "Vultur gryphus"
   }
   
-  if(grepl("Milvus migrans", file)){
-    dat$individual.taxon.canonical.name <- "Milvus migrans"
+  if(grepl("BCI Agouti GPS test", file)){
+    dat$individual.taxon.canonical.name <- "Dasyprocta punctata"
   }
-  if(grepl("Setophaga striata", file)){
+  
+  
+  # Older ones that were rechecked
+  
+  if(grepl("North America and the Atlantic Ocean, Setophaga striata", file)){
     dat$individual.taxon.canonical.name <- "Setophaga striata"
   }
-  if(grepl("Blackpoll Warbler", file)){
-    dat$individual.taxon.canonical.name <- "Setophaga striata"
-  }
+  
   if(grepl("Crax globulosa", file)){
     dat$individual.taxon.canonical.name <- "Crax globulosa"
   }
-  if(grepl("Coyote Valley Bobcat Habitat Connectivity Study", file)){
-    dat$individual.taxon.canonical.name <- "Lynx rufus"
+  
+  if(grepl("Foraging ecology of masked boobies", file)){
+    dat$individual.taxon.canonical.name <- "Sula dactylatra"
   }
+  
   if(grepl("Lagostrophus fasciatus", file)){
     dat$individual.taxon.canonical.name <- "Lagostrophus fasciatus"
   }
-  if(grepl("Cassin's Vireo", file)){
-    dat$individual.taxon.canonical.name <- "Vireo cassinii"
-  }
+  
   if(grepl("Lowland tapirs, Tapirus terrestris, in", file)){
     dat$individual.taxon.canonical.name <- "Tapirus terrestris"
+  }  
+  
+  if(grepl("Milvus migrans", file)){
+    dat$individual.taxon.canonical.name <- "Milvus migrans"
   }
-  if(grepl("Monitoring of Capra ibex (Bovidae) populations", file, fixed = T)){
-    dat$individual.taxon.canonical.name <- "Capra ibex"
-  }
+  
   if(grepl("Wildebeest (Eastern white bearded) Mo", file, fixed = T)){
     dat$individual.taxon.canonical.name <- "Connochaetes taurinus"
   }
   
-  # This one doesn't have species-level data
-  if(grepl("Local flight paths of nocturnally migrating birds", file)){
-    next()
-  }
-
+  
+  # Need to check these below. Will determine if there are problems here
   
   # Find cases where the species name is not recorded
   if(dat$individual.taxon.canonical.name %>% unique() %>% is.na() %>% all()){
@@ -179,7 +307,53 @@ for(file in movebank_files){
     next()
   } 
   
+  
+
+
+  if(grepl("Blackpoll Warbler", file)){
+    dat$individual.taxon.canonical.name <- "Setophaga striata"
+  }
+
+  if(grepl("Coyote Valley Bobcat Habitat Connectivity Study", file)){
+    dat$individual.taxon.canonical.name <- "Lynx rufus"
+  }
+  
+  if(grepl("Cassin's Vireo", file)){
+    dat$individual.taxon.canonical.name <- "Vireo cassinii"
+  }
+
+  if(grepl("Monitoring of Capra ibex (Bovidae) populations", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Capra ibex"
+  }
+
+  # This one doesn't have species-level data
+  if(grepl("Local flight paths of nocturnally migrating birds", file)){
+    next()
+  }
+  
+  
+  # These are apparently deployed data where there isn't an individual local
+  # identifier
+  if(file %in% c("./data/Movebank raw/Bechstein's bat Bats The Netherlands and Belgium.csv",
+                 "./data/Movebank raw/Griffon vulture [fdlmes.gr].csv")){
+    dat$individual.local.identifier <- "a"
+  }
+
+  
+
   dat <- dat %>% filter(individual.taxon.canonical.name != "")
+  dat <- dat %>% filter(individual.local.identifier != "")
+  
+  
+  
+  
+  # Here are ones where there's some individual tags that may not be on
+  # individuals of an animal species...
+  
+  
+  if(grepl("Sperm whale CRC NW Atlantic", file, fixed = T)){
+    dat$individual.taxon.canonical.name <- "Physeter macrocephalus"
+  }
   
   # Change column formats ---------------------------------------
   #head(dat)
@@ -207,36 +381,6 @@ for(file in movebank_files){
   # Sort by time for each individual
   dat <- dat %>% arrange(individual.local.identifier, timestamp)
   
-  
-  # Reduce temporal resolution if < 5 minutes by iteratively removing 
-  # timesteps that are less than 5 minutes from the next. There must be 
-  # a more clever way to do this, but here's a while-loop way
-  
-  temp_res_check <- F
-  while(temp_res_check == F){
-    
-    dat$keep_vec <- dat %>%
-      group_by(individual.local.identifier) %>%
-      mutate(diff = timestamp - lag(timestamp),
-             diff_mins = as.numeric(diff, units = 'mins'),
-             odd = row_number() %% 2) %>% 
-      mutate(keep = ifelse(diff_mins < 5 & odd == 1, 0, 1)) %>% 
-      mutate(keep = ifelse(is.na(keep), 1, keep)) %>% 
-      pull(keep)
-    
-    temp_res_check <- all(dat$keep_vec == 1)
-    
-    dat <- dat[dat$keep_vec == 1,]
-    #print(dim(dat))
-    
-     
-    #asdf <- dat %>% filter(individual.local.identifier == levels(as.factor(individual.local.identifier))[1])
-    #hist(asdf$location.long)
-    
-    #dat %>% dplyr::select(timestamp, keep_vec)
-    
-
-  }
 
   
   # Manipulate to get displacement values ---------------------------------------
@@ -245,11 +389,25 @@ for(file in movebank_files){
   # We'll basically do stratified sampling to get day-time timestamps
   # for each individual
   
-  focal_sp <- focal_sp_class <- nocturnal <- diurnal <- body_mass <- max_days <- NA
+  focal_sp <- focal_sp_class <- nocturnal <- diurnal <- body_mass <- max_days <- time_res_goal <- NA
   
   # Want to change the sampling time based on the taxon identity
   focal_sp <- unique(dat$individual.taxon.canonical.name) %>% sort()
   focal_sp_class <- tax_name(sci = focal_sp, get = "class", db = "ncbi")$class
+  
+  # There is at least one issue where the species name isn't in the database
+  focal_sp <- ifelse(focal_sp == "Tyto furcata", "Tyto alba", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Myotis bechsteini", "Myotis bechsteinii", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Myotis daubentoni", "Myotis daubentonii", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Neophron percnopterus", "Neophron perenopterus", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Onychoprion fuscatus", "Sterna fuscata", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Ichthyaetus melanocephalus", "Lixus melanocephalus", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Phoenicopterus minor", "Phoeniconaias minor", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Antrostomus vociferus", "Caprimulgus vociferus", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Physeter macrocephalus", "Physeter katadon", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Larus vegae", "Larus argentatus", focal_sp)
+  focal_sp <- ifelse(focal_sp == "Gelochelidon nilotica", "Sterna nilotica", focal_sp)
+  
   
   # Will skip the 
   if(!focal_sp_class %in% c("Aves", "Mammalia")) next()
@@ -259,18 +417,77 @@ for(file in movebank_files){
     diurnal <- nocturnal == 0
     
     body_mass <- elton_birds %>% filter(scientificNameStd %in% focal_sp) %>% pull(BodyMass.Value)
-    max_days <- ceiling(exp(-5.64120 + 0.54627 * log(body_mass)) * 2)
+    max_days <- ceiling(exp(-5.64120 + 0.54627 * log(body_mass)) * 2) * 24.5/24
   }
   if(focal_sp_class == "Mammalia"){
     diurnal <- elton_mammals %>% filter(scientificNameStd %in% focal_sp) %>% pull(Activity.Diurnal)
     diurnal <- diurnal == 1
 
     body_mass <- elton_mammals %>% filter(scientificNameStd %in% focal_sp) %>% pull(BodyMass.Value)
-    max_days <- ceiling(exp(-5.64120 + 0.54627 * log(body_mass)) * 2)
+    max_days <- ceiling(exp(-5.64120 + 0.54627 * log(body_mass)) * 2) * 24.5/24 # This allows us to capture events when there's exactly (or very close to) 1 day between events
     max_days <- ifelse(max_days > 10, 10, max_days)
   }
   
+  # elton_mammals %>% filter(word(focal_sp, 1) == word(elton_mammals$scientificNameStd, 1))
+  # "Myotis bechsteinii" %in% elton_mammals$scientificNameStd
+  # focal_sp
+  # 
+  # elton_birds %>%
+  #   filter(word(focal_sp, 1) == word(elton_birds$scientificNameStd, 1)) %>%
+  #   arrange(English)
+  # "Sterna fuscata" %in% elton_birds$scientificNameStd
+  # "Pernis apivorus" %in% elton_birds$scientificNameStd
+  # "Larus argentatus" %in% elton_birds$scientificNameStd
+  # 
+  # "Gull" %in% word(elton_birds$English, 2)
+  # filter(elton_birds, English == "Gull-billed Tern")
+  # focal_sp
+  # 
+  # 
+  # "Ovis aries" %in% elton_mammals$scientificNameStd
+  # "Physeter" %in% word(elton_mammals$scientificNameStd,1)
+  # elton_mammals %>% filter(word(scientificNameStd, 1) == "Physeter")
+  
   max_frug_events_per_individ <- 5
+  
+  
+  # First, want to reduce temporal resolution if < X minutes by iteratively
+  # removing timesteps that are less than X minutes from the next. There must be
+  # a more clever way to do this, but here's a while-loop way.
+  
+  # But what should this X be? Let's reduce so that it's a max of about 300 points, which
+  # works out to about 5 minutes between events for a 1 day max_days value
+  
+  time_res_goal <- (max_days * 1440 / 300)[1]
+  
+  if(!all(time_res_goal == time_res_goal[1])) stop()
+  
+  temp_res_check <- F
+  while(temp_res_check == F){
+    
+    dat$keep_vec <- dat %>%
+      group_by(individual.local.identifier) %>%
+      mutate(diff = timestamp - lag(timestamp),
+             diff_mins = as.numeric(diff, units = 'mins'),
+             odd = row_number() %% 2) %>% 
+      mutate(keep = ifelse(diff_mins < time_res_goal & odd == 1, 0, 1)) %>% 
+      mutate(keep = ifelse(is.na(keep), 1, keep)) %>% 
+      pull(keep)
+    
+    temp_res_check <- all(dat$keep_vec == 1)
+    
+    dat <- dat[dat$keep_vec == 1,]
+    # print(dim(dat))
+    # print(temp_res_check)
+    
+    
+    #asdf <- dat %>% filter(individual.local.identifier == levels(as.factor(individual.local.identifier))[1])
+    #hist(asdf$location.long)
+    
+    #dat %>% dplyr::select(timestamp, keep_vec)
+    
+    
+  }
   
   
   set.seed(4)
@@ -378,7 +595,7 @@ for(file in movebank_files){
     event_ind <- which(dat$event.id == i)
     id <- dat$individual.local.identifier[event_ind]
     time_start <- dat$timestamp[event_ind]
-    time_end <- time_start + days(max_days)
+    time_end <- time_start + minutes(round(max_days * 1440))
     
     track_inds <- which(dat$individual.local.identifier == id &
                           dat$timestamp >= time_start &
@@ -476,6 +693,7 @@ for(file in movebank_files){
                   "location.long", "location.lat",
                   "individual.taxon.canonical.name", 
                   "individual.local.identifier",
+                  "sensor.type",
                   "frug_event_id", 
                   "displacement", "time_diff_min", 
                   "study.name")
@@ -486,6 +704,7 @@ for(file in movebank_files){
                     "location.long", "location.lat",
                     "individual.taxon.canonical.name", 
                     "individual.local.identifier",
+                    "sensor.type.id",
                     "frug_event_id", 
                     "displacement", "time_diff_min", 
                     "study.id")
