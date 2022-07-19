@@ -7,9 +7,7 @@ ipak(c("tidyverse",
        "ggplot2"))
 
 # Load move dataframe and make sf object
-move_df <- read.csv("./data/tidy/move_df.csv", row.names = 1)
-
-glimpse(move_df)
+move_df <- read.csv("./data/tidy/move_df_with_gee_covs.csv")
 
 mollcrs <- "+proj=moll +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs"
 projcrs <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
@@ -22,7 +20,8 @@ move_sf[1,]
 
 # Load ocean and land footprint index
 ocean_fp <- raster("./data/spatial data/cumulative_impact_2013.tif")
-land_fp <- raster("./data/spatial data/lulc-human-modification-terrestrial-systems_mollweide.tif")
+#land_ghm <- raster("./data/spatial data/lulc-human-modification-terrestrial-systems_mollweide.tif")
+land_fp <- raster("./data/spatial data/HFP2009.tif") # https://datadryad.org/stash/dataset/doi:10.5061/dryad.052q5
 
 
 # Now extract
@@ -45,8 +44,9 @@ hist(land_fp_vals)
 hist(ocean_fp_vals/8.89)
 #hist(.3^(ocean_fp_vals))
 
-# This caused the computer to restart... Why?
+# # This caused the computer to restart... Why?
 # land_fp4 <- raster::aggregate(land_fp, fact = 4, fun = mean, na.rm = T)
+# ocean_fp4 <- raster::aggregate(ocean_fp, fact = 4, fun = mean, na.rm = T)
 
 # Bind the footprint columns
 land_fp_df <- tibble(land_fp = land_fp_vals)
@@ -60,10 +60,13 @@ move_df <- move_df %>%
 
 move_df[1,]
 
+
 # Figure out why there are NAs
 
 asdf <- move_df %>% 
   filter(is.na(land_fp) & is.na(ocean_fp))
+asdf <- move_df %>% 
+  filter(!is.na(land_fp) & !is.na(ocean_fp))
 
 dim(asdf)
 
@@ -75,14 +78,14 @@ library("rnaturalearthdata")
 world <- ne_countries(scale = "medium", returnclass = "sf")
 class(world)
 
-ggplot(data = world) +
-  geom_sf() +
-  geom_point(data = asdf[sample(1:nrow(asdf), 1000),], aes(x = location.long, y = location.lat))
+# ggplot(data = world) +
+#   geom_sf() +
+#   geom_point(data = asdf[sample(1:nrow(asdf), 1000),], aes(x = location.long, y = location.lat))
 
 library(leaflet)
 leaflet(asdf[sample(1:nrow(asdf), 1000),]) %>% addTiles() %>% addMarkers(lng = ~ location.long, lat = ~location.lat)
 
 # Write this to CSV
-write.csv(move_df, file = "./data/tidy/move_df_spat.csv")
+write.csv(move_df, file = "./data/tidy/move_df_spat.csv", row.names = F)
 
 
