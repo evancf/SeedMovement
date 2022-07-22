@@ -144,16 +144,16 @@ move_df <- move_df %>%
 
 
 
-# # Let's try a frequentist approach first
+# Let's try a frequentist approach first
 # 
-# move_df <- move_df %>% 
+# move_df <- move_df %>%
 #   filter(!animal_group %in% c("mamm_cetacean", "bird_marine"),
 #          !individual.taxon.canonical.name %in% marine_foraging_mammals)
 # 
 # ipak("lme4")
 # move_mod <- lmer(log(displacement) ~ log(time_diff_min) + mean_fp * animal_group + mean_product * animal_group +
-#               (log(time_diff_min)|individual.taxon.canonical.name) +
-#               (1|frug_event_id)
+#               (log(time_diff_min)|individual.taxon.canonical.name)# +
+#               #(1|frug_event_id)
 #               ,
 #           data = move_df) # log(mass) * * animal_group
 # 
@@ -228,13 +228,20 @@ move_df <- move_df[complete.cases(dplyr::select(move_df,
                                                 mean_fp,
                                                 mass)),]
 
+# Subset to non-marine ones
+move_df <- move_df %>% 
+  filter(!animal_group %in% c("bird_marine", "mamm_marine", "mamm_cetacean"))
+
 move_df <- move_df %>% 
   dplyr::arrange(frug_event_id,
                  time_diff_min)
 
 
-
 # move_df <- move_df[1:20000,]
+
+
+# Decide if we want this to be saved
+save_mod <- T
 
 event_inds <- which(!duplicated(move_df$frug_event_id))
 dataList <- list(
@@ -260,13 +267,15 @@ dataList <- list(
   n_id = length(unique(move_df$individual.local.identifier)),
   id = as.numeric(as.factor(move_df$individual.local.identifier)),
   
+  id_of_event = as.numeric(as.factor(move_df$individual.local.identifier))[event_inds],
+  
   # Species
   n_sp = length(unique(move_df$individual.taxon.canonical.name)),
   sp = as.numeric(as.factor(move_df$individual.taxon.canonical.name)),
   
   # Animal group
   n_animal_group = length(unique(move_df$animal_group)),
-  animal_group = as.numeric(as.factor(move_df$animal_group)),
+  animal_group = as.numeric(as.factor(move_df$animal_group))[event_inds],
   
   animal_group_of_species = as.numeric(as.factor(move_df$animal_group))[!duplicated(move_df$individual.taxon.canonical.name)]
   
@@ -282,7 +291,7 @@ model {
 
   for(i in 1:n){
     displacement[i] ~ dnorm(mean[i], tau[sp[i]])
-    mean[i] <- beta_0[sp[i]] + exp(beta_t[sp[i]]) * time[i] + lin_pred[n_event_vec[i]] + rand_id[id[i]]
+    mean[i] <- beta_0[sp[i]] + exp(beta_t[sp[i]]) * time[i] + lin_pred[n_event_vec[i]]# + rand_id[id[i]]
   }
   
   for(i in 1:n_event){
@@ -296,15 +305,15 @@ model {
     lin_pred[i] <- beta_fp[animal_group[i]] * fp[i] + beta_product[animal_group[i]] * product[i]
   }
   
-  # Priors for event-level 'random effects'
-  for(j in 1:n_id){
-    rand_id[j] ~ dnorm(0, 0.1)
-  }
+  # # Priors for event-level 'random effects'
+  # for(j in 1:n_id){
+  #   rand_id[j] ~ dnorm(0, 0.1)
+  # }
   
   # Priors for species-level coefs
   for(j in 1:n_sp){
     beta_0[j] ~ dnorm(group_mean_beta_0[animal_group_of_species[j]], 0.1)
-    beta_t[j] ~ dnorm(group_mean_beta_t[animal_group_of_species[j]], 1)
+    beta_t[j] ~ dnorm(group_mean_beta_t[animal_group_of_species[j]], 0.1)
     
     tau[j] <- pow(sd[j], -2)
     sd[j] ~ dnorm(group_mean_sd[animal_group_of_species[j]], 0.1) T(0,) # half normal sd following Gelman et al. 2006
@@ -313,18 +322,18 @@ model {
   # Priors for group-level coefs
   for(k in 1:n_animal_group){
     group_mean_beta_0[k] ~ dnorm(0, 0.1)
-    group_mean_beta_t[k] ~ dnorm(0, 1)
+    group_mean_beta_t[k] ~ dnorm(0, 0.1)
     
     group_mean_sd[k] ~ dunif(0, 10)
     
     # beta_mass[k] ~ dnorm(overall_mean_beta_mass, 0.1) # Commenting out to only use a single mass coefficient across taxa
-    # beta_fp[k] ~ dnorm(overall_mean_beta_fp, 0.1) # Changing this out as we expect different taxa to specifically respond differently to fp
-    beta_fp[k] ~ dnorm(0, 0.1)
+    beta_fp[k] ~ dnorm(overall_mean_beta_fp, 0.1) 
+    # beta_fp[k] ~ dnorm(0, 0.1) # Could change to this if we expect different taxa to specifically respond differently to fp
     beta_product[k] ~ dnorm(overall_mean_beta_product, 0.1) # Commenting these out to remove this level of hierarchy
   }
   
   overall_mean_beta_mass ~ dnorm(0, 0.1)
-  # overall_mean_beta_fp ~ dnorm(0, 0.1) # Commenting this out as we expect different taxa to specifically respond differently to fp
+  overall_mean_beta_fp ~ dnorm(0, 0.1) # Could comment this out if we expect different taxa to specifically respond differently to fp
   overall_mean_beta_product ~ dnorm(0, 0.1) 
     
   # Derived quantities
@@ -336,10 +345,10 @@ sink()
 
 ipak("rjags")
 
-reps <- length(unique(move_df$individual.taxon.canonical.name))
-inits <- list(list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)),
-              list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)),
-              list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)))
+# reps <- length(unique(move_df$individual.taxon.canonical.name))
+# inits <- list(list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)),
+#               list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)),
+#               list(a = rep(2, reps), b = rep(5, reps), beta_ghm = rep(0, reps)))
 
 displacement_jags <- jags.model("./analysis/displacement_jags.txt", 
                                 data = dataList,
@@ -355,7 +364,13 @@ Sys.time() # Started at 1:52 pm on Saturday
 update(displacement_jags, 1000)
 Sys.time() # and it took this much longer to do 100 iterations
 
-save(file = "./outputs/displacement_mod_0713.RData", displacement_jags)
+if(save_mod == T){
+  filename_mod <- paste0("./outputs/displacement_mod_", 
+                         Sys.time() %>% substr(1,10) %>% gsub("-", "", ., fixed = T), 
+                         ".RData")
+  save(file = filename_mod, displacement_jags)  
+}
+
 
 
 variables_to_sample <- c("beta_0",
@@ -377,7 +392,7 @@ time0 <- Sys.time()
 displacement_samples <- coda.samples(displacement_jags,
                                      variable.names = variables_to_sample,
                                      thin = 5,
-                                     n.iter = 2000)
+                                     n.iter = 1000)
 #plot(displacement_samples)
 time1 <- Sys.time()
 time1-time0 # About 0.45 minutes per iteration?
@@ -385,6 +400,20 @@ time1-time0 # About 0.45 minutes per iteration?
 ipak("MCMCvis")
 MCMCtrace(displacement_samples, 
           params = "beta_t")
+
+
+
+
+# Save displacement samples and a few other helper vectors
+if(save_mod == T){
+  filename_samples <- paste0("./outputs/displacement_samples_", 
+                         Sys.time() %>% substr(1,10) %>% gsub("-", "", ., fixed = T), 
+                         ".RData")
+  save(file = filename_samples,
+       displacement_samples,
+       variables_to_sample)  
+}
+
 
 plot(dat$time_diff_min,
      dat$displacement/1000,
@@ -402,12 +431,8 @@ exp(3) * x / (exp(7.6) + x)
 exp(3) * x / (exp(7.6) + x) * (1 + -0.86)
 
 
-# Save displacement samples and a few other helper vectors
-save(file = "./outputs/displacement_samples_0713.RData",
-     displacement_samples,
-     variables_to_sample)
 
-
+# 
 
 ipak("lme4")
 move_mod <- lmer(log(displacement) ~ log(time_diff_min) + mean_fp * animal_group + mean_product + # * animal_group + log(mass) +
