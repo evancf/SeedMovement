@@ -145,19 +145,39 @@ move_df <- move_df %>%
 
 
 # Let's try a frequentist approach first
-# 
-# move_df <- move_df %>%
-#   filter(!animal_group %in% c("mamm_cetacean", "bird_marine"),
-#          !individual.taxon.canonical.name %in% marine_foraging_mammals)
-# 
-# ipak("lme4")
-# move_mod <- lmer(log(displacement) ~ log(time_diff_min) + mean_fp * animal_group + mean_product * animal_group +
-#               (log(time_diff_min)|individual.taxon.canonical.name)# +
-#               #(1|frug_event_id)
-#               ,
-#           data = move_df) # log(mass) * * animal_group
-# 
-# summary(move_mod)
+
+move_df <- move_df %>%
+  filter(!animal_group %in% c("mamm_cetacean", "bird_marine"),
+         !individual.taxon.canonical.name %in% marine_foraging_mammals)
+
+ipak("lme4")
+move_mod <- lmer(log(displacement) ~ log(time_diff_min) + mean_fp * animal_group + mean_product * animal_group +
+              (log(time_diff_min)|individual.taxon.canonical.name) +
+              (1|frug_event_id)
+              ,
+          data = move_df) # log(mass) * * animal_group
+
+summary(move_mod)
+
+move_mod_mean <- lmer(log(displacement) ~ log(time_diff_min) + mean_fp + mean_product +
+                        (log(time_diff_min)|individual.taxon.canonical.name) +
+                        (mean_fp|animal_group) +
+                        (mean_product|animal_group) +
+                        (1|frug_event_id),
+                 data = move_df) # log(mass) * * animal_group
+
+summary(move_mod_mean)
+coef(move_mod_mean)
+
+
+move_mod_2 <- lmer(log(displacement) ~ log(time_diff_min) + mean_fp + mean_product + 
+                        (log(time_diff_min)|individual.taxon.canonical.name) +
+                        #(mean_fp|animal_group) +
+                        #(mean_product|animal_group) +
+                        (1|frug_event_id),
+                      data = move_df)
+summary(move_mod_2)
+
 # 
 # ran_df <- coef(move_mod)$individual.taxon.canonical.name
 # 
@@ -399,7 +419,12 @@ time1-time0 # About 0.45 minutes per iteration?
 
 ipak("MCMCvis")
 MCMCtrace(displacement_samples, 
-          params = "beta_t")
+          params = "overall_mean_beta_fp")
+MCMCsummary(displacement_samples, 
+          params = "beta_fp")
+
+MCMCplot(displacement_samples,
+         params = "beta_fp")
 
 
 

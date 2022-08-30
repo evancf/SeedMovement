@@ -86,3 +86,38 @@ plogis(fixef(tc_mod)[1] + fixef(tc_mod)[2] * 1)
 # Here's the relationship
 
 # P(presence) = plogis(-0.99 + 1.30 * treecover)
+
+
+# Make a figure
+
+asdf <- sjPlot::plot_model(tc_mod, type = "pred", grid.breaks = 10)
+
+pred_dat <- sjPlot::get_model_data(tc_mod, type = "pred", terms="treecover2000 [all]")
+pred_dat %>% str()
+
+png(file = "./outputs/fragmentation-dependent presence.png", 
+    width = 4,
+    height = 5,
+    units = "in",
+    res = 400)
+
+plot(pred_dat$x * 100,
+     pred_dat$predicted,
+     xlab = "Percent tree cover",
+     ylab = "Presence probability",
+     xlim = c(0, 100),
+     ylim = c(0, 0.8),
+     type = "l",
+     frame = F,
+     lwd = 2,
+     las = 1)
+
+polygon(x = c(pred_dat$x * 100, rev(pred_dat$x * 100)),
+        y = c(pred_dat$conf.low, rev(pred_dat$conf.high)),
+        col = rgb(0,0,0,0.2),
+        lty = 0)
+
+dev.off()
+
+
+
